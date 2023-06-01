@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -10,25 +10,37 @@ import ChatComponent from './ChatComponent';
 
 const ChattingList = () => {
   const navigate = useNavigate();
-  // const [visible, setVisible] = useState(false);
-  const [recoilId, setRecoilId] = useRecoilState(chattingIdAtom);
+  // const [recoilId, setRecoilId] = useRecoilState(chattingIdAtom);
   const nicknameAtom = useRecoilValue(nickNameAtom);
+  const [chattingAddress, setChattingAddress] = useState(null);
+  // const [isaddressCheck, setIsaddressCheck] = useState(false);
 
   const getListData = async () => {
-    const response = await axios.get('');
+    const response = await axios.get('http://localhost:8080/broadcasts');
     return response;
   };
   const idArr = [];
   const { data, isLoading } = useQuery('getListData', getListData);
 
   useEffect(() => {
-    !isLoading && data?.data.map((item) => idArr.push(item.channelId));
+    !isLoading &&
+      data?.data.map((item) => {
+        idArr.push(item.channelId);
+      });
   }, [data, isLoading]);
 
+  // !isLoading &&
+  //   data?.data.map((item) => {
+  //     idArr.push(item.channelId);
+  //   });
+
   const intoChatting = async (e) => {
-    const chattingId = e.target.id;
-    setRecoilId(chattingId);
-    await axios.post('', { chattingId });
+    const channelId = e.target.id;
+    const response = await axios.get(
+      `http://localhost:8080/broadcasts/${channelId}`
+    );
+    setChattingAddress(response.data.chattingAddress);
+    // setRecoilId(response.data.chattingAddress);
     navigate('/chat');
   };
 
@@ -46,7 +58,15 @@ const ChattingList = () => {
               }}
             >
               <ChattingCardDiv key={item} id={item} onClick={intoChatting}>
-                <ChatComponent chatRoomId={recoilId} nickname={nicknameAtom} />
+                {chattingAddress !== null && (
+                  <div style={{ display: 'none' }}>
+                    <ChatComponent
+                      chatRoomId={item}
+                      nickname={nicknameAtom}
+                      chattingAddress={chattingAddress}
+                    />
+                  </div>
+                )}
               </ChattingCardDiv>
               <ChattingIdcheck>{item}</ChattingIdcheck>
             </div>

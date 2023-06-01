@@ -1,100 +1,111 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   RSocketClient,
   JsonSerializer,
   IdentitySerializer,
+  encodeRoute,
 } from 'rsocket-core';
 import RSocketWebSocketClient from 'rsocket-websocket-client';
+import { EchoResponder } from './responder';
+import { useRecoilState, useRecoilValue } from 'recoil';
+import { nickNameAtom, chattingIdAtom } from './atoms';
 
-const ChatComponent = ({ chatRoomId, nickname }) => {
-  const [messages, setMessages] = useState([]);
-  const [inputValue, setInputValue] = useState('');
+const ChatComponent = ({ chattingAddress }) => {
+  const [message, setMessage] = useState('');
   const [socket, setSocket] = useState(null);
-
-  console.log('chatRoomId::::::', chatRoomId);
+  const [messages, setMessages] = useState([]);
+  // const chattingAddress = useRecoilValue(chattingIdAtom);
+  // const [chattingAddress, setChattingAddress] = useState('');
+  console.log('chattingAddress::::', chattingAddress);
 
   useEffect(() => {
+    connect(chattingAddress);
+  }, [chattingAddress]);
+
+  const messageReceiver = (payload) => {
+    setMessages((prevMessages) => [...prevMessages, payload.data]);
+  };
+
+  const responder = new EchoResponder(messageReceiver);
+
+  const send = () => {
+    socket
+      .requestResponse({
+        data: {
+          username: 'Superpil',
+          message: message,
+          chattingAddress: chattingAddress,
+        },
+        metadata: String.fromCharCode('message'.length) + 'message',
+      })
+      .subscribe({
+        onComplete: (com) => {
+          console.log('com : ', com);
+        },
+        onError: (error) => {
+          console.log(error);
+        },
+        onNext: (payload) => {
+          console.log(payload.data);
+        },
+        onSubscribe: (subscription) => {
+          console.log('subscription', subscription);
+        },
+      });
+  };
+
+  const connect = (chattingAddress) => {
     const client = new RSocketClient({
       serializers: {
         data: JsonSerializer,
         metadata: IdentitySerializer,
       },
+      setup: {
+        payload: {
+          data: chattingAddress,
+        },
+        keepAlive: 60000,
+        lifetime: 180000,
+        dataMimeType: 'application/json',
+        metadataMimeType: 'message/x.rsocket.routing.v0',
+      },
+      responder: responder,
       transport: new RSocketWebSocketClient({
-        url: 'ws://localhost:6565/rs', // 고정 URL , 주소 확인
+        url: 'ws://localhost:6565/rs',
       }),
     });
 
-    const setupPayload = {
-      data: '',
-      metadata: Buffer.from(`CHATROOM:${chatRoomId}:${nickname}`),
-      //메타데이터 형식
-    };
-
     client.connect().subscribe({
       onComplete: (socket) => {
+        console.log('소켓 연결됨');
         setSocket(socket);
-
-        socket.requestStream(setupPayload).subscribe({
-          // 서버로부터 메세지를 받는 로직
-          onNext: (payload) => {
-            const message = payload.data;
-            setMessages((prevMessages) => [...prevMessages, message]);
-          },
-          onError: (error) => {
-            console.error('Error receiving chat message:', error);
-          },
-        });
       },
       onError: (error) => {
-        console.error('Failed to connect to RSocket server:', error);
+        console.log('e : ', error);
+      },
+      onSubscribe: (cancel) => {
+        console.log(cancel);
       },
     });
-
-    return () => {
-      if (socket) {
-        socket.close();
-      }
-    };
-  }, [chatRoomId, nickname]);
-
-  const sendMessage = () => {
-    const message = inputValue.trim();
-    if (message) {
-      setMessages((prevMessages) => [...prevMessages, message]);
-      setInputValue('');
-
-      if (socket) {
-        const metadata = Buffer.from(`CHATROOM:${chatRoomId}:${nickname}`);
-        //메타데이터 형식 CHATROOM:${chatRoomId}:${nickname} -> : 으로 구분
-        //백엔드 서버의 메타데이터 수용 형식에 맞게끔 변경 가능
-        //프론트,백엔드 형식 통일 필요
-        //메타데이터는 RSocket 서버에서 해당 클라이언트를 구분하거나 필요한 추가 정보를 전달하기 위해 사용됨
-        socket.fireAndForget({
-          // 서버로 메세지 내용 전송하는 로직
-          data: message,
-          metadata: metadata,
-        });
-      }
-    }
   };
 
   return (
     <div>
-      <div>
-        <input
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-        />
-        <button onClick={sendMessage}>Send</button>
-      </div>
-      <div>
-        {messages.map((message, index) => (
-          <div key={index}>
-            {nickname} : {message}
-          </div>
+      <h1>Chatting</h1>
+      <input
+        type="text"
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        placeholder="메시지 입력"
+      />
+      <button onClick={send}>전송</button>
+      <ul>
+        {messages.map((item, index) => (
+          <li key={index}>
+            {item.username} : {item.message}
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 };
